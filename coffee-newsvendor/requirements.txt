@@ -1,0 +1,10 @@
+numpy>=1.23
+scipy>=1.11
+pandas>=2.1
+cvxpy>=1.4
+Mosek>=10.0
+matplotlib>=3.8
+openpyxl>=3.0.10
+scikit-learn>=1.3
+# Gurobi is used only for RKHS; enabling RKHS also requires a Gurobi license.
+gurobipy>=12.0

@@ -1,5 +1,41 @@
+# Python environments and caches
 __pycache__/
-*.pyc
-*.pyo
-.DS_Store
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Experiment outputs
 results/
+outputs/
+*.log
+
+# Local input data (documented in each experiment README)
+/coffee-newsvendor/data/
+/portfolio/msci/
+
+# Superseded helper copies are not needed by the self-contained coffee rkhs.py.
+third_party/
+**/multi.py
+**/auxiliary_func.py
+
+# Credentials and commercial solver licenses
+*.lic
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+~$*
+.idea/
+.vscode/

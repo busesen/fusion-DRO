@@ -1,0 +1,6 @@
+numpy>=1.23
+scipy>=1.11
+pandas>=2.1
+cvxpy>=1.4
+Mosek>=10.0
+matplotlib>=3.8
