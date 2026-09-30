@@ -72,6 +72,19 @@ python portfolio/main.py replot \
 
 Use `--out-dir /path/to/figures` with `replot` to leave the original result directory unchanged.
 
+### Worst-case distributions
+
+The worst-case transport figure is produced by re-solving one instance of a scaling run, here run 0 of the sample-size sweep with K = 3 and N_k = 10, and plotting the worst-case distributions recovered from the dual solutions:
+
+```bash
+python -m portfolio.plotting.worst_case_duals \
+  --results portfolio/results/res_w2_<timestamp>_syn --run 0 --sweep N --K 3 --N 10 --solver MOSEK
+python -m portfolio.plotting.plot_worst_case_contours \
+  --npz portfolio/results/res_w2_<timestamp>_syn/worst_case/worst_case_run0_N_K3_N10.npz
+```
+
+The first command writes the recovered worst cases to `worst_case/worst_case_run0_N_K3_N10.npz`, together with a summary of the objective values. The second writes `worst_case_run0_N_K3_N10_contours_2x3.pdf` to the same folder. The plot uses LaTeX for its text if available.
+
 ## Checks
 
 From `fusion-DRO`, run `python -m unittest portfolio.test_scaling`. These checks cover the paper defaults, deterministic reference prefixes, covariance resampling, retry units, and figure output names; they do not require a solver license.
