@@ -101,11 +101,14 @@ class RkhsTests(unittest.TestCase):
         self.assertEqual(actual[0, 0], 1.0)
         self.assertTrue(all(row in samples for row in actual))
 
-    def test_latin_hypercube_keeps_existing_unseeded_constructor(self):
+    def test_latin_hypercube_is_seeded(self):
+        # the sampler is seeded from numpy's global RNG, which solve_rkhs seeds, so runs repeat
         with patch.object(rkhs, 'SMC', return_value=[np.full(3, 1/3), 0.1]):
             with patch.object(rkhs.qmc, 'LatinHypercube', side_effect=RuntimeError('stop before solving')) as sampler:
                 status, objective, order, _ = self.solve()
-        sampler.assert_called_once_with(3)
+        sampler.assert_called_once()
+        self.assertEqual(sampler.call_args.args, (3,))
+        self.assertEqual(set(sampler.call_args.kwargs) & {'rng', 'seed'} != set(), True)
         self.assertEqual(status, 'error: stop before solving')
         self.assertIsNone(objective)
         self.assertIsNone(order)
@@ -123,9 +126,17 @@ class RkhsTests(unittest.TestCase):
         np.testing.assert_array_equal(np.random.get_state()[1], numpy_state[1])
         self.assertEqual(np.random.get_state()[2:], numpy_state[2:])
 
-    def test_adapter_preserves_existing_status_contract(self):
-        for order, expected in ((np.ones(3), 'optimal'), (None, 'failed')):
-            with patch.object(rkhs, 'M_SMC', return_value=(order, 7.0, [0, 0, 0])):
+    def test_adapter_status_follows_termination(self):
+        # only a converged cutting-plane loop (or the original stagnation rule) counts as optimal
+        cases = ((np.ones(3), 'converged', 'optimal'), (np.ones(3), 'stagnation', 'optimal_stagnation'),
+                 (np.ones(3), 'time_limit', 'failed: time_limit'), (np.zeros(3), 'gurobi_error: x', 'failed: gurobi_error: x'),
+                 (np.ones(3), None, 'failed: no solution'), (None, 'converged', 'failed: no solution'))
+        for order, term, expected in cases:
+            def fake(*args, order=order, term=term, **kwargs):
+                if term is not None:
+                    rkhs.LAST_RKHS_RUN_INFO = {'termination': term, 'iterations': 3, 'objective': 7.0}
+                return order, 7.0, [0, 0, 0]
+            with patch.object(rkhs, 'M_SMC', side_effect=fake):
                 status, objective, _, extra = self.solve()
             self.assertEqual(status, expected)
             self.assertEqual(objective, 7.0)

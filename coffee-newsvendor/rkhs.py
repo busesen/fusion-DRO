@@ -26,6 +26,21 @@ DEFAULT_GUROBI_LICENSE = Path.home() / "gurobi.lic"
 ALT_GUROBI_LICENSE_ENV = "IWB_GUROBI_LICENSE_FILE"
 
 
+
+def _seeded_lhs(dim):
+    """Latin hypercube sampler seeded from numpy's global RNG, so a run with a fixed
+    np.random.seed is reproducible (qmc.LatinHypercube(dim) alone draws fresh OS entropy)."""
+    s = int(np.random.randint(0, 2**31 - 1))
+    try:
+        return qmc.LatinHypercube(dim, rng=s)
+    except TypeError:
+        return qmc.LatinHypercube(dim, seed=s)
+
+LAST_RKHS_CERTIFICATE: Dict[str, Any] = {}
+
+# termination reason, iterations and objective of the last M_SMC_Model newsvendor solve
+LAST_RKHS_RUN_INFO = {}
+
 def check_rkhs_dependencies() -> None:
     """Import optional packages without opening a licensed solver session."""
     global gp, GRB, rbf_kernel, euclidean_distances, train_test_split, qmc
@@ -277,10 +292,12 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
     start_time = time.time()
     if problem_type == 'newsvendor':
         (H, B, C, P, dim) = params
-        A_X = np.array([C - P - B, C + H])
-        A_Xi = np.array([B, -H - P])
+        # All 2^dim affine pieces of the multi-item newsvendor loss (the
+        # original two rows only covered "all under" / "all over").
+        from coffee_common import branch_matrices
+        A_X, A_Xi = branch_matrices({'H': H, 'B': B, 'C': C, 'P': P})
         dim_x = dim
-        n_k = 2
+        n_k = A_X.shape[0]
         obj = -1
         w_value = np.full(dim_x, 0.0)
         time_spent = 0.0
@@ -288,7 +305,7 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
         import copy
         samples_P_list_copy = copy.deepcopy(X_all)
         samples_P_list = {m: samples_P_list_copy[m] for m in range(M)}
-        lhs_sampler = qmc.LatinHypercube(dim)
+        lhs_sampler = _seeded_lhs(dim)
         lhs_samples = lhs_sampler.random(n_J)
         lb = np.min(data_emp_all, axis=0)
         ub = np.max(data_emp_all, axis=0)
@@ -350,6 +367,7 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
         obj_tolerance = 0.0001
         iteration = 0
         is_global_optimal = False
+        termination = 'max_iterations'  # overwritten below unless the loop runs out of iterations
         start_time = time.time()
         try:
             print('Adding seed constraints...')
@@ -367,6 +385,7 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
                 status = model.Status
                 if status not in [GRB.OPTIMAL, GRB.SUBOPTIMAL]:
                     print(f'Main problem solving terminated abnormally, status code: {status}')
+                    termination = f'solver_status_{status}'
                     obj = model.ObjVal if model.SolCount > 0 else -1
                     w_value = _safe_mvar_value(w, dim_x)
                     break
@@ -377,6 +396,7 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
                     stagnant_count = 0
                 if stagnant_count >= max_stagnant_iters:
                     print(f'Iteration {iteration}: The objective function has improved minimally for {max_stagnant_iters} consecutive iterations (< {obj_tolerance}). Convergence assumed, triggering early termination!')
+                    termination = 'stagnation'
                     is_global_optimal = True
                     obj = current_obj
                     w_value = np.array([model.getVarByName(f'w[{l}]').X for l in range(dim_x)])
@@ -401,6 +421,7 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
                         violations.append({'k': k, 'idx': idx, 'viol': viol_array[idx]})
                 if len(violations) == 0:
                     print(f'Iteration {iteration}: No violated constraints found, global optimum reached!')
+                    termination = 'converged'
                     is_global_optimal = True
                     obj = model.ObjVal
                     w_value = w.X
@@ -418,24 +439,52 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
                 print(f'Iteration {iteration}: Found {len(violations)} violated constraints, added Top {added_count} cuts. Current Obj: {model.ObjVal:.4f}')
                 if time.time() - start_time > time_limit:
                     print('Reached total time limit.')
+                    termination = 'time_limit'
                     obj = model.ObjVal if model.SolCount > 0 else -1
                     w_value = _safe_mvar_value(w, dim_x)
                     break
             w_value = _safe_mvar_value(w, dim_x)
         except gp.GurobiError as e:
             print(f'Gurobi Error: {e}')
+            termination = f'gurobi_error: {e}'
             obj = -2
             w_value = _safe_mvar_value(w, dim_x)
         except Exception as e:
             print(f'Other exception: {e}')
+            termination = f'exception: {e}'
             obj = -2
             w_value = _safe_mvar_value(w, dim_x)
         finally:
             time_spent = time.time() - start_time
+            # why the cutting-plane loop stopped; read by the wrappers so that a run that did not
+            # converge is not reported as optimal
+            global LAST_RKHS_RUN_INFO
+            LAST_RKHS_RUN_INFO = {'termination': termination, 'iterations': int(iteration), 'objective': float(obj)}
             print('Executing memory cleanup.')
+            # Keep the fitted RKHS certificate g(xi) = sum_j theta_j k(xi, r_j) and beta
+            # so solve_rkhs can store them for plotting.
+            global LAST_RKHS_CERTIFICATE
+            try:
+                LAST_RKHS_CERTIFICATE = {'rkhs_theta': np.asarray(theta.X, dtype=float), 'rkhs_beta': float(beta.X), 'rkhs_representation_points': np.asarray(representation_points, dtype=float), 'rkhs_kernel_gamma': float(kernel_gamma), 'rkhs_alpha': np.asarray(alpha, dtype=float).reshape(-1), 'rkhs_R': float(np.asarray(R, dtype=float).reshape(-1)[0])}
+            except Exception:
+                LAST_RKHS_CERTIFICATE = {}
             if model is not None:
                 model.dispose()
     return (w_value, obj, time_spent)
+
+def rkhs_status(w, obj, run_info) -> str:
+    """Status of an RKHS (M-SMC) solve from the termination reason of its cutting-plane loop.
+    'optimal': no violated constraint left; 'optimal_stagnation': stopped by the original
+    code's own convergence rule (objective unchanged for 3 iterations). Anything else (time
+    limit, iteration limit, solver status, Gurobi error) is a failure, never 'optimal'."""
+    term = (run_info or {}).get("termination")
+    if w is None or obj is None or term is None:
+        return "failed: no solution"
+    if term == "converged":
+        return "optimal"
+    if term == "stagnation":
+        return "optimal_stagnation"
+    return f"failed: {term}"
 
 def solve_rkhs(samples_list: Sequence[np.ndarray], validation_samples: np.ndarray, cost_params: Dict[str, np.ndarray], outdir: str, verbose: bool, seed: int, rkhs_nu: float, rkhs_source_weights: Sequence[float], rkhs_source_weight_mode: str, rkhs_n_J: int, rkhs_is_herding: bool, rkhs_T: int, rkhs_time_limit: int, gurobi_license_file: str='') -> Tuple[str, Optional[float], Optional[np.ndarray], Dict[str, Any]]:
     _ensure_gurobi_license(gurobi_license_file=gurobi_license_file)
@@ -450,15 +499,33 @@ def solve_rkhs(samples_list: Sequence[np.ndarray], validation_samples: np.ndarra
     hyper = {'kernel': 'Gaussian', 'nu': float(rkhs_nu), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()], 'source_weight_mode': str(rkhs_source_weight_mode), 'n_J': int(rkhs_n_J), 'is_herding': bool(rkhs_is_herding), 'T': int(rkhs_T), 'time_Limit': int(rkhs_time_limit)}
     py_state = random.getstate()
     np_state = np.random.get_state()
+    global LAST_RKHS_CERTIFICATE, LAST_RKHS_RUN_INFO
     try:
         random.seed(int(seed))
         np.random.seed(int(seed))
+        LAST_RKHS_CERTIFICATE = {}
+        LAST_RKHS_RUN_INFO = {}
         if bool(verbose):
             (w, obj, time_info) = M_SMC('newsvendor', params, data_info, hyper, outdir, False, is_m5=False, is_realETF=True, verbose=True)
         else:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 (w, obj, time_info) = M_SMC('newsvendor', params, data_info, hyper, outdir, False, is_m5=False, is_realETF=True, verbose=False)
-        return ('optimal' if w is not None else 'failed', None if obj is None else float(obj), None if w is None else np.asarray(w, dtype=float), {'roodso_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]})
+        extra = {'roodso_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]}
+        # Store the fitted RKHS certificate in a side file for plotting; it is too
+        # large for a CSV/Excel cell.
+        if LAST_RKHS_CERTIFICATE:
+            try:
+                cert_dir = Path(outdir) / 'rkhs_certificates'
+                cert_dir.mkdir(parents=True, exist_ok=True)
+                cert_path = cert_dir / f'rkhs_nu{float(rkhs_nu):.4f}_seed{int(seed)}.npz'
+                np.savez_compressed(cert_path, **{k: np.asarray(v, dtype=float) for (k, v) in LAST_RKHS_CERTIFICATE.items()})
+                extra['rkhs_certificate_file'] = str(cert_path)
+            except Exception as exc:
+                extra['rkhs_certificate_file'] = f'save failed: {exc}'
+        run_info = dict(LAST_RKHS_RUN_INFO)
+        extra['rkhs_termination'] = run_info.get('termination')
+        extra['rkhs_iterations'] = run_info.get('iterations')
+        return (rkhs_status(w, obj, run_info), None if obj is None else float(obj), None if w is None else np.asarray(w, dtype=float), extra)
     except Exception as exc:
         return (f'error: {exc}', None, None, {'roodso_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]})
     finally:

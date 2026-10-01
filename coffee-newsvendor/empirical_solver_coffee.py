@@ -35,8 +35,39 @@ DEFAULT_MOSEK_LICENSE = Path.home() / "mosek" / "mosek.lic"
 ALT_MOSEK_LICENSE_ENV = "IWB_MOSEK_LICENSE_FILE"
 
 
+def _solve_prob(prob: "cp.Problem", solver: str, verbose: bool) -> None:
+    """Solve with the requested solver; if it raises (e.g. numerical trouble at a
+    zero radius), retry once with SCS instead of aborting the whole grid. If both
+    fail the problem is left unsolved, so the row is recorded as failed (NaN
+    costs) and is never selected by validation."""
+    try:
+        prob.solve(solver=solver, verbose=verbose)
+        return
+    except Exception as exc:  # noqa: BLE001
+        first_exc = exc
+    if str(solver).upper() != "SCS":
+        try:
+            prob.solve(solver="SCS", verbose=verbose)
+            print(f"[empirical_solver_coffee] {solver} failed ({first_exc}); solved with SCS instead, status={prob.status}")
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    print(f"[empirical_solver_coffee] solver failure ({solver}, SCS fallback): {first_exc}")
+
+
+def _val(var: Any) -> Any:
+    """JSON-friendly value of a cvxpy variable (None if unsolved). Used to store
+    the dual multipliers gamma_k and decision-rule coefficients a_k, A_k so the
+    worst-case distributions can be reconstructed later (e.g. for plotting)."""
+    v = getattr(var, "value", None)
+    if v is None:
+        return None
+    arr = np.asarray(v, dtype=float)
+    return float(arr) if arr.ndim == 0 else arr.tolist()
+
+
 def _status_ok(status: str | None) -> bool:
-    return str(status) in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE, "optimal", "optimal_inaccurate"}
+    return str(status) in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE, "optimal", "optimal_inaccurate", "optimal_stagnation"}
 
 
 def _ensure_mosek_license(mosek_license_file: str = "") -> None:
@@ -109,7 +140,7 @@ def _make_method_block(status: str, objective: Optional[float], w: Optional[np.n
     return out
 
 
-def _solve_single_ball_w2(nominal_samples: np.ndarray, nominal_weights: np.ndarray, eps_cost: float, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray]]:
+def _solve_single_ball_w2(nominal_samples: np.ndarray, nominal_weights: np.ndarray, eps_cost: float, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray], Dict[str, Any]]:
     support = np.asarray(nominal_samples, dtype=float)
     probs = np.asarray(nominal_weights, dtype=float).reshape(-1)
     probs = probs / probs.sum()
@@ -128,11 +159,12 @@ def _solve_single_ball_w2(nominal_samples: np.ndarray, nominal_weights: np.ndarr
         constraints.append(s >= cval + support @ dvec + extra)
 
     prob = cp.Problem(cp.Minimize(gamma * float(eps_cost) + probs @ s), constraints)
-    prob.solve(solver=solver, verbose=verbose)
-    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float)
+    _solve_prob(prob, solver=solver, verbose=verbose)
+    aux = {"dual_gamma": _val(gamma)}
+    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float), aux
 
 
-def _solve_minkowski_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray]]:
+def _solve_minkowski_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray], Dict[str, Any]]:
     K = len(samples_list)
     Ns = [s.shape[0] for s in samples_list]
     d = samples_list[0].shape[1]
@@ -152,11 +184,12 @@ def _solve_minkowski_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[
 
     sample_term = cp.sum([cp.sum(s[k]) / float(Ns[k]) for k in range(K)])
     prob = cp.Problem(cp.Minimize(cp.sum(cp.multiply(gamma, eps_cost)) + sample_term), constraints)
-    prob.solve(solver=solver, verbose=verbose)
-    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float)
+    _solve_prob(prob, solver=solver, verbose=verbose)
+    aux = {"dual_gamma": _val(gamma)}
+    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float), aux
 
 
-def _solve_static_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray]]:
+def _solve_static_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool) -> Tuple[str, Optional[float], Optional[np.ndarray], Dict[str, Any]]:
     K = len(samples_list)
     Ns = [s.shape[0] for s in samples_list]
     d = samples_list[0].shape[1]
@@ -178,11 +211,12 @@ def _solve_static_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[flo
 
     sample_term = cp.sum([cp.sum(s[k]) / float(Ns[k]) for k in range(K)])
     prob = cp.Problem(cp.Minimize(cp.sum(cp.multiply(gamma, eps_cost)) + sample_term), constraints)
-    prob.solve(solver=solver, verbose=verbose)
-    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float)
+    _solve_prob(prob, solver=solver, verbose=verbose)
+    aux = {"dual_gamma": _val(gamma), "dual_a": _val(a)}
+    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float), aux
 
 
-def _solve_affine_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool, psd_shift: float = 1e-8) -> Tuple[str, Optional[float], Optional[np.ndarray]]:
+def _solve_affine_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray, cost_params: Dict[str, np.ndarray], solver: str, verbose: bool, psd_shift: float = 1e-8) -> Tuple[str, Optional[float], Optional[np.ndarray], Dict[str, Any]]:
     K = len(samples_list)
     Ns = [s.shape[0] for s in samples_list]
     d = samples_list[0].shape[1]
@@ -215,8 +249,9 @@ def _solve_affine_w2(samples_list: Sequence[np.ndarray], t_weights: Sequence[flo
 
     sample_term = cp.sum([cp.sum(s[k]) / float(Ns[k]) for k in range(K)])
     prob = cp.Problem(cp.Minimize(cp.sum(cp.multiply(gamma, eps_cost)) + sample_term), constraints)
-    prob.solve(solver=solver, verbose=verbose)
-    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float)
+    _solve_prob(prob, solver=solver, verbose=verbose)
+    aux = {"dual_gamma": _val(gamma), "dual_a": _val(a), "dual_A": [_val(Ak) for Ak in A]}
+    return str(prob.status), None if prob.value is None else float(prob.value), None if w.value is None else np.asarray(w.value, dtype=float), aux
 
 
 def _resolve_rkhs_source_weights(t_weights, rkhs_source_weights):
@@ -355,12 +390,12 @@ def solve_empirical_population_coffee(
 
     if run_erm:
         t0 = time.time()
-        status, obj, w_val = _solve_single_ball_w2(pooled_nominal_samples, pooled_nominal_weights, eps_cost=0.0, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
-        out["erm"] = _eval_block(status, obj, w_val, t0, extra={"epsilon": 0.0, "nominal": "pooled_empirical"})
+        status, obj, w_val, aux = _solve_single_ball_w2(pooled_nominal_samples, pooled_nominal_weights, eps_cost=0.0, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
+        out["erm"] = _eval_block(status, obj, w_val, t0, extra={"epsilon": 0.0, "nominal": "pooled_empirical", **aux})
 
     if run_pooled:
         t0 = time.time()
-        status, obj, w_val = _solve_single_ball_w2(
+        status, obj, w_val, aux = _solve_single_ball_w2(
             pooled_nominal_samples,
             pooled_nominal_weights,
             eps_cost=float(epsilon_single) ** 2,
@@ -368,34 +403,34 @@ def solve_empirical_population_coffee(
             solver=cvxpy_solver,
             verbose=verbose,
         )
-        extra = {"epsilon_pooled": float(epsilon_single), "epsilon_pooled_cost": float(epsilon_single) ** 2}
+        extra = {"epsilon_pooled": float(epsilon_single), "epsilon_pooled_cost": float(epsilon_single) ** 2, **aux}
         out["pooled"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
     if run_aff:
         t0 = time.time()
         eps_cost = eps_arr ** 2
-        status, obj, w_val = _solve_affine_w2(samples_list, t_weights, eps_cost, cost_params, solver=cvxpy_solver, verbose=verbose)
-        extra = {"eps_cost": [float(v) for v in (eps_arr ** 2).tolist()]}
+        status, obj, w_val, aux = _solve_affine_w2(samples_list, t_weights, eps_cost, cost_params, solver=cvxpy_solver, verbose=verbose)
+        extra = {"eps_cost": [float(v) for v in (eps_arr ** 2).tolist()], **aux}
         out["affine"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
     if run_static:
         t0 = time.time()
-        status, obj, w_val = _solve_static_w2(samples_list, t_weights, eps_arr ** 2, cost_params, solver=cvxpy_solver, verbose=verbose)
-        extra = {"eps_cost": [float(v) for v in (eps_arr ** 2).tolist()]}
+        status, obj, w_val, aux = _solve_static_w2(samples_list, t_weights, eps_arr ** 2, cost_params, solver=cvxpy_solver, verbose=verbose)
+        extra = {"eps_cost": [float(v) for v in (eps_arr ** 2).tolist()], **aux}
         out["static"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
     if run_mixture:
         t0 = time.time()
-        status, obj, w_val = _solve_single_ball_w2(mix_nominal_samples, mix_nominal_weights, eps_cost=float(epsilon_single) ** 2, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
-        extra = {"epsilon_mix": float(epsilon_single), "epsilon_mix_cost": float(epsilon_single) ** 2}
+        status, obj, w_val, aux = _solve_single_ball_w2(mix_nominal_samples, mix_nominal_weights, eps_cost=float(epsilon_single) ** 2, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
+        extra = {"epsilon_mix": float(epsilon_single), "epsilon_mix_cost": float(epsilon_single) ** 2, **aux}
         out["mixture"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
     if run_minkowski:
         t0 = time.time()
         eps_mink = np.full(len(samples_list), float(epsilon_single), dtype=float)
         radius_mode = "common_scalar"
-        status, obj, w_val = _solve_minkowski_w2(samples_list, t_weights, eps_mink ** 2, cost_params, solver=cvxpy_solver, verbose=verbose)
-        extra = {"eps_cost": [float(v) for v in (eps_mink ** 2).tolist()], "radius_mode": radius_mode}
+        status, obj, w_val, aux = _solve_minkowski_w2(samples_list, t_weights, eps_mink ** 2, cost_params, solver=cvxpy_solver, verbose=verbose)
+        extra = {"eps_cost": [float(v) for v in (eps_mink ** 2).tolist()], "radius_mode": radius_mode, **aux}
         out["minkowski"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
     if run_barycenter_fitted:
@@ -403,12 +438,16 @@ def solve_empirical_population_coffee(
         bary_t0 = time.time()
         nominal_samples, nominal_weights, bary_meta = _barycenter_fitted_support(samples_list, t_weights, float(wass_p), int(barycenter_num_samples), int(barycenter_seed))
         bary_support_time_sec = float(time.time() - bary_t0)
-        status, obj, w_val = _solve_single_ball_w2(nominal_samples, nominal_weights, eps_cost=float(epsilon_single) ** 2, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
+        status, obj, w_val, aux = _solve_single_ball_w2(nominal_samples, nominal_weights, eps_cost=float(epsilon_single) ** 2, cost_params=cost_params, solver=cvxpy_solver, verbose=verbose)
         extra = {
             "epsilon": float(epsilon_single),
             "epsilon_cost": float(epsilon_single) ** 2,
             "additional_solve_time_sec": float(bary_support_time_sec),
             **bary_meta,
+            **aux,
+            # the sampled Gaussian-barycenter support, needed to reconstruct the worst case
+            "nominal_support": np.asarray(nominal_samples, dtype=float).tolist(),
+            "nominal_support_weights": np.asarray(nominal_weights, dtype=float).tolist(),
         }
         out["barycenter_fitted"] = _eval_block(status, obj, w_val, t0, extra=extra)
 
