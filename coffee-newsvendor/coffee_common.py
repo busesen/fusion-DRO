@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -168,13 +169,28 @@ def load_cost_params(price_csv: str | Path) -> Dict[str, np.ndarray]:
 
 
 def branch_matrices(cost_params: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+    """Affine pieces of the multi-item newsvendor loss.
+
+    The loss is a sum over items of a per-item maximum,
+        l(w; xi) = sum_i max{(C_i - P_i - B_i) w_i + B_i xi_i,  (C_i + H_i) w_i - (H_i + P_i) xi_i},
+    so as a single pointwise maximum it has 2^d pieces, one per choice of
+    understocked/overstocked for every item. Row l of (a_x, a_xi) is one piece:
+    l(w; xi) = max_l a_x[l] @ w + a_xi[l] @ xi, which equals newsvendor_cost_matrix.
+    """
     H = np.asarray(cost_params["H"], dtype=float)
     B = np.asarray(cost_params["B"], dtype=float)
     C = np.asarray(cost_params["C"], dtype=float)
     P = np.asarray(cost_params["P"], dtype=float)
-    a_x = np.array([C - P - B, C + H], dtype=float)
-    a_xi = np.array([B, -H - P], dtype=float)
-    return a_x, a_xi
+    d = int(C.shape[0])
+    under_x, under_xi = C - P - B, B
+    over_x, over_xi = C + H, -H - P
+    rows_x: List[np.ndarray] = []
+    rows_xi: List[np.ndarray] = []
+    for pattern in itertools.product((0, 1), repeat=d):
+        mask = np.asarray(pattern, dtype=bool)  # True = item overstocked
+        rows_x.append(np.where(mask, over_x, under_x))
+        rows_xi.append(np.where(mask, over_xi, under_xi))
+    return np.asarray(rows_x, dtype=float), np.asarray(rows_xi, dtype=float)
 
 
 def newsvendor_cost_matrix(demand: np.ndarray, w: np.ndarray, cost_params: Dict[str, np.ndarray]) -> np.ndarray:
