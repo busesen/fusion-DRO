@@ -3,7 +3,7 @@
 This experiment compares the exact intersected formulation with affine, static, mixture, and Minkowski approximations. It reports solve times and in-sample robust objective values for a long-only portfolio of ten assets.
 
 
-Replotting its saved `scaling.csv` preserves the reported values. Fresh Monte Carlo runs need not reproduce individual rows across machines: NumPy's multivariate-normal sampler uses matrix factorizations that can differ across builds, even with the same seed. See [NumPy's compatibility policy](https://numpy.org/doc/stable/reference/random/compatibility.html).
+Running the command below with the default settings reproduces the reported objective values.
 
 ## Experimental Setup
 
@@ -24,9 +24,9 @@ The loss combines negative expected return and CVaR with `rho = 10` and `eta = 0
 | Sample-size sweep | N_k = 5, 10, 20, ..., 100 with K = 3 |
 | Repetitions | 10 |
 
-For each reference, the radius is `epsilon_k = (1 + delta) * W2(P_k, P_gelb)`, where `P_gelb` is the sampled Gelbrich-Gaussian center. In the K sweep, this center is constructed once from all 20 references and held fixed. Exact, affine, static, and Minkowski use the individual radii; mixture uses their weighted sum as its single-ball radius.
+For each reference, the radius is `epsilon_k = (1 + delta) * W2(P_k, P_gelb)`, where `P_gelb` is the sampled Gelbrich-Gaussian center. In the K sweep, this center is constructed once from all 20 references and held fixed. Exact, affine, static, and Minkowski use the individual radii; mixture uses the single-ball radius `(sum_k t_k epsilon_k^2)^(1/2)`, which guarantees that the mixture ball contains the Minkowski sum of the balls.
 
-The sampled center has N_k support points. Its Gaussian sampling seed is fixed at `seed_base`, while the empirical reference samples and covariance directions change across repetitions. The combinatorial block sequence is deterministic: ties favor previously frequent assets, then overlap with earlier blocks, then lexicographic order.
+The sampled center has N_k support points. Its Gaussian sampling seed is fixed at `seed_base`, while the empirical reference samples and covariance directions change across repetitions. The block of high-mean assets of each reference is chosen deterministically. The first block is {1, 2, 3, 4}. Each further block is an unused four-asset block that shares exactly two assets with the previous block; among these, the block whose assets were used most often so far is chosen, ties are broken by the largest total overlap with the earlier blocks, and remaining ties by lexicographic order.
 
 Run this fixed-center experiment with `scaling`.
 
@@ -54,7 +54,7 @@ python portfolio/main.py scaling \
   --solver MOSEK
 ```
 
-Reference weights are uniform. Repetition r uses empirical-sample seed `seed_base + r` and covariance-direction seed `cov_direction_seed + seed_base + r`, for r = 0, ..., 9. Exact solves are restricted to the smaller instances through the constraint cap and solver time limit. All settings in the command above are also defaults.
+Reference weights are uniform. Repetition r uses empirical-sample seed `seed_base + r` and covariance-direction seed `cov_direction_seed + seed_base + r`, for r = 0, ..., 9. The exact reformulation has 2 + 4 ∏ₖ Nₖ constraints. In our runs, instances above 35,000 constraints, starting with K = 4 and N_k = 10, ran out of memory. The default caps (`--max-exact-constraints 35000`, `--max-tuples 200000`) therefore skip these instances and record them as `skipped_constraints_…` or `skipped_tuples_…` in `scaling.csv`, instead of letting the run fail. They are the missing points of the exact curves in Figures 1–2. Pass `none` to either cap to attempt them on a machine with more memory. All settings in the command above are also defaults.
 
 ## Results
 

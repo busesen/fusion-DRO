@@ -10,8 +10,8 @@ PatternResult = Tuple[np.ndarray, List[List[int]]]
 
 def _source_mu_high(k: int, mu_high: float, mu_high_growth: float) -> float:
     """Per-source 'high' mean. k is the 0-indexed source position, so source
-    0 always gets exactly mu_high (backward compatible) and later sources get
-    progressively more extreme means when mu_high_growth != 0. Using an
+    0 gets exactly mu_high and later sources get progressively more extreme
+    means when mu_high_growth != 0. Using an
     absolute (not K-normalized) offset keeps the schedule prefix-consistent:
     source k's mean is the same regardless of how large the total K sweep is.
     """
@@ -59,8 +59,10 @@ def make_combinatorial_overlap_blocks_pattern(
             block_set = set(block)
             if len(prev & block_set) != overlap_size:
                 continue
-            # Break ties by prior asset usage, then overlap with earlier blocks,
-            # then lexicographic order. This preserves the paper run's sequence.
+            # Among the unused blocks that share overlap_size assets with the previous
+            # block, prefer the one whose assets were used most often so far, then the
+            # one with the largest total overlap with earlier blocks, then the
+            # lexicographically smallest one.
             score = (
                 -float(sum(asset_counts[idx] for idx in block)),
                 -float(sum(len(block_set & set(old_group)) for old_group in groups[:-1])),

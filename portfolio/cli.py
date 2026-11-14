@@ -48,8 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     scaling.add_argument('--approx-mode', choices=['both', 'affine', 'static'], default='both')
     for method in ('exact', 'mixture', 'minkowski'):
         scaling.add_argument(f'--run-{method}', nargs='?', const=True, default=True, type=_parse_bool_value)
-    scaling.add_argument('--max-tuples', default='200000', help='Exact tuple cap, or none.')
-    scaling.add_argument('--max-exact-constraints', default='35000', help='Exact constraint cap, or none.')
+    scaling.add_argument('--max-tuples', default='200000',
+                         help='Skip the exact solve above this number of atom tuples (or none).')
+    scaling.add_argument('--max-exact-constraints', default='35000',
+                         help='Skip the exact solve above this number of constraints (or none); larger '
+                              'instances ran out of memory in our runs.')
     scaling.add_argument('--exact-time-limit-sec', type=float, default=1800.0)
     scaling.add_argument('--solver', default='MOSEK')
     scaling.add_argument('--mosek-license-path', default=None)

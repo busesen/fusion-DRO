@@ -408,8 +408,6 @@ def plot_scaling(df: pd.DataFrame, out_dir: str | Path, *, timestamp_source: str
     if df.empty:
         return
     df = df.copy()
-    # Accept the historical name in saved scaling CSVs.
-    df['method'] = df['method'].replace({'msdro': 'exact'})
     df = df[df['method'].isin(METHOD_ORDER)]
     match = re.search(r'\d{8}_\d{6}', Path(timestamp_source or out_dir).name)
     suffix = '_' + match.group(0) if match else ''

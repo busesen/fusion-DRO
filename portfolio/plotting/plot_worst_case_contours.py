@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, LogNorm, SymLogNorm
 from matplotlib.lines import Line2D
+from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
 from matplotlib.legend_handler import HandlerPatch
 from matplotlib.patches import FancyArrow, Patch
 from matplotlib.ticker import MaxNLocator
@@ -95,6 +96,8 @@ def main() -> None:
                     help="repeat the Exact worst-case points (dashed) in the other panels (off by default)")
     ap.add_argument("--xaxis", choices=["return", "objective"], default="return",
                     help="x = return of the Exact portfolio (samples spread out; default) or its objective integrand")
+    ap.add_argument("--max_xticks", type=int, default=5,
+                    help="(x = return) maximum number of tick labels on the uncompressed part of the x-axis")
     ap.add_argument("--tail_share", type=float, default=0.35,
                     help="(x = return) width of the compressed far-left piece relative to the sample range")
     ap.add_argument("--color_scale", choices=["panel", "equalized", "log"], default="panel",
@@ -236,20 +239,27 @@ def render(a, use_latex: bool) -> None:
     yticks = MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]).tick_values(ylo - ymarg, yhi + ymarg)
     yticks = yticks[(yticks >= yticks[yticks <= ylo - ymarg].max()) & (yticks <= yticks[yticks >= yhi + ymarg].min())]
     if a.xaxis == "return":
-        step = 0.005
         cloud_w = float(np.ptp(cS_raw[:, 0]))
-        x_right = np.ceil((allc[:, 0].max() + 0.02 * cloud_w) / step) * step
-        x_left = np.floor((allc[:, 0].min() - 0.02 * cloud_w / max(lam, 1e-9)) / 0.01) * 0.01   # 2% margin in display units
+        lo = xa if lam < 1.0 else allc[:, 0].min() - 0.02 * cloud_w
+        hi = allc[:, 0].max() + 0.02 * cloud_w
+        # tick spacing: the smallest round step that leaves at most --max_xticks ticks on the
+        # uncompressed part of the axis, so that the tick labels do not overlap
+        for step in (0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5):
+            if (hi - lo) / step <= a.max_xticks - 1:
+                break
+        x_right = np.ceil(hi / step) * step
+        x_left = np.floor((allc[:, 0].min() - 0.02 * cloud_w / max(lam, 1e-9)) / step) * step   # 2% margin in display units
         cloud = np.arange(np.ceil(xa / step) * step, x_right + step / 2, step) if lam < 1.0 else \
             np.arange(x_left, x_right + step / 2, step)
         xticks = cloud
         if lam < 1.0:
             gap = 0.9 * (disp(cloud[1]) - disp(cloud[0]))   # keep tail tick labels as far apart as the others
             tail = [x_left]
-            for v in np.arange(x_left + 0.01, xa, 0.01):
+            for v in np.arange(x_left + step, xa, step):
                 if disp(v) - disp(tail[-1]) > gap and disp(cloud[0]) - disp(v) > gap:
                     tail.append(v)
             xticks = np.concatenate([tail, cloud])
+        xticks = np.round(xticks, 10)
     else:
         xticks = np.array([v for v in (0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5)
                            if allc[:, 0].min() / 2.5 <= v <= allc[:, 0].max() * 2.5])
@@ -335,9 +345,20 @@ def render(a, use_latex: bool) -> None:
                        zorder=6, clip_on=False)
         if not a.marginals:
             ax.set_title(SC(title), fontsize=26)
-        txt = "\n".join(rf"$\mathsf{{W}}_2(\mathbb Q_{i + 1},\mathbb Q_{j + 1})={w2_after[meth][(i, j)]:.3f}$" for i, j in pairs)
-        ax.text(0.025, 0.975, txt, transform=ax.transAxes, ha="left", va="top", fontsize=16, zorder=8,
-                bbox=dict(boxstyle="round,pad=0.35", facecolor="white", edgecolor="#9a9a9a", alpha=0.85))
+        # W2 distances between the transported distributions, with each Q_k in the colour of reference k
+        def piece(s, color="k"):
+            return TextArea(s, textprops=dict(fontsize=16, color=color))
+        rows = [HPacker(children=[piece(r"$\mathsf{W}_2($"), piece(rf"$\mathbb{{Q}}_{i + 1}$", REF_COLORS[i]), piece(r"$,$"),
+                                  piece(rf"$\mathbb{{Q}}_{j + 1}$", REF_COLORS[j]),
+                                  piece(rf"$)={w2_after[meth][(i, j)]:.3f}$")], align="baseline", pad=0, sep=1)
+                for i, j in pairs]
+        box = AnchoredOffsetbox(loc="upper left", child=VPacker(children=rows, align="left", pad=0, sep=4),
+                                bbox_to_anchor=(0.025, 0.975), bbox_transform=ax.transAxes, borderpad=0, pad=0.35,
+                                frameon=True)
+        box.patch.set_boxstyle("round,pad=0.35")
+        box.patch.set(facecolor="white", edgecolor="#9a9a9a", alpha=0.85)
+        box.set_zorder(8)
+        ax.add_artist(box)
         ax.set_xlim(ulo, uhi)
         ax.set_ylim(yticks[0], yticks[-1])
         ax.set_xticks(disp(xticks))
@@ -345,13 +366,13 @@ def render(a, use_latex: bool) -> None:
         ax.set_yticks(yticks)
         ax.set_yticklabels([("$0$" if abs(v) < 1e-12 else f"${v:g}$") for v in yticks])
         if a.xaxis == "return":
-            ax.set_xlabel(rf"Return of the {SC('Exact')} portfolio (${BM('beta')}^\top{BM('xi')}$)", fontsize=21)
+            ax.set_xlabel(rf"Return of the {SC('Exact')} portfolio (${{{BM('x')}^\star}}^\top{BM('xi')}$)", fontsize=21)
         else:
             ax.set_xlabel(rf"In-sample objective under the {SC('Exact')} decision", fontsize=21)
         # the y-axis is shared by all panels: label and tick values only in the first column
         col = list(axes).index(ax) % (3 if a.layout == "2x3" else 6)
         if col == 0 or a.layout != "2x3":
-            ax.set_ylabel(rf"First principal component (${BM('xi')}^\top\boldsymbol{{e}}$)", fontsize=21)
+            ax.set_ylabel(rf"First principal component (${BM('xi')}^\top{BM('e')}$)", fontsize=21)
         else:
             ax.set_yticklabels([])
         ax.tick_params(labelsize=17)
@@ -382,6 +403,8 @@ def render(a, use_latex: bool) -> None:
                 base = K - 1 - k                                         # reference 1 on top
                 sax.fill_between(uu, base, base + scale * before[k], color=REF_COLORS[k], alpha=0.30, lw=0, zorder=2 + k)
                 sax.plot(uu, base + scale * before[k], color=REF_COLORS[k], lw=0.6, alpha=0.6, zorder=2 + k)
+                sax.fill_between(uu, base, base + scale * after, facecolor="none", edgecolor=REF_COLORS[k], hatch="///",
+                                 lw=0, zorder=4 + k)
                 sax.plot(uu, base + scale * after, color=REF_COLORS[k], lw=1.8, zorder=5 + k)
                 sax.axhline(base, color="#bdbdbd", lw=0.5, zorder=1)
             sax.axvline(float(disp(-tau_e if a.xaxis == "return" else f_kink)), color="k", ls="--", lw=1.0, alpha=0.6)
@@ -394,24 +417,41 @@ def render(a, use_latex: bool) -> None:
 
     leg_ax = axes[-1]
     leg_ax.axis("off")
-    handles = [Line2D([], [], marker="o", color=REF_COLORS[k], markeredgecolor=EDGE, ls="", ms=9,
-                      label=rf"Training samples of $\hat{{\mathbb P}}_{k + 1}$") for k in range(K)]
-    handles += [Line2D([], [], marker="D", color="#9a9a9a", markeredgecolor=EDGE, ls="", ms=7,
+    handles = [Line2D([], [], marker="o", color=REF_COLORS[k], markeredgecolor=EDGE, ls="", ms=11,
+                      label=rf"Training samples of $\widehat{{\mathbb{{P}}}}_{k + 1}$") for k in range(K)]
+    handles += [Line2D([], [], marker="D", color="#9a9a9a", markeredgecolor=EDGE, ls="", ms=9,
                        label="Worst-case location"),
-                Line2D([], [], marker="o", markerfacecolor="none", markeredgecolor="k", markeredgewidth=1.4, ls="", ms=12,
+                Line2D([], [], marker="o", markerfacecolor="none", markeredgecolor="k", markeredgewidth=1.6, ls="", ms=14,
                        label=rf"{SC('Exact')} worst case (area = mass)"),
                 FancyArrow(0, 0, 1, 0, color="#6b6b6b", label="Transport (opacity = mass)"),
                 Line2D([], [], color="k", ls="--", lw=1.0, alpha=0.6, label=rf"{SC('Exact')} VaR")]
-    if a.marginals:
-        handles += [Patch(facecolor="#9a9a9a", alpha=0.35, edgecolor="none", label=r"Top: reference distributions $\hat{\mathbb P}_k$"),
-                    Line2D([], [], color="#6b6b6b", lw=1.8, label=r"Top: transported distributions $\mathbb Q_k$")]
+    top_handles = [Patch(facecolor="#9a9a9a", alpha=0.35, edgecolor="none", label=r"Reference distributions $\widehat{\mathbb{P}}_k$"),
+                   Patch(facecolor="none", edgecolor="#6b6b6b", hatch="///", lw=1.8,
+                         label=r"Transported distributions $\mathbb{Q}_k$")]
     def _arrow_handle(legend, orig_handle, xdescent, ydescent, width, height, fontsize):
         y = 0.5 * height - ydescent
         return FancyArrow(-xdescent, y, width, 0, width=0.6, head_width=0.45 * height, head_length=0.3 * height,
                           length_includes_head=True, color=orig_handle.get_facecolor(), lw=1.2)
 
-    leg_ax.legend(handles=handles, handler_map={FancyArrow: HandlerPatch(patch_func=_arrow_handle)}, loc="center", bbox_to_anchor=(0.5, 0.5 + strip_h / 2), frameon=False, fontsize=20,
-                  labelspacing=0.45)
+    def section(title, hs):
+        leg = leg_ax.legend(handles=hs, handler_map={FancyArrow: HandlerPatch(patch_func=_arrow_handle)},
+                            loc="upper left", frameon=False, fontsize=22, labelspacing=0.35, alignment="left",
+                            title=rf"\textbf{{{title}}}" if tex else title,
+                            title_fontproperties=dict(size=24, weight="bold"))
+        leg_ax.add_artist(leg)
+        return leg
+
+    # "Marginals (top)" (the strips above the panels) above "Transport (panels)" (the panels themselves),
+    # stacked and centred vertically in the free panel
+    sections = ([section("Marginals (top)", top_handles)] if a.marginals else []) + [section("Transport (panels)", handles)]
+    renderer = fig.canvas.get_renderer()
+    to_axes = leg_ax.transAxes.inverted()
+    heights = [np.diff(to_axes.transform(lg.get_window_extent(renderer))[:, 1])[0] for lg in sections]
+    gap = 0.03
+    top = 0.5 + strip_h / 2 + (sum(heights) + gap * (len(sections) - 1)) / 2
+    for lg, h in zip(sections, heights):
+        lg.set_bbox_to_anchor((0.0, top), transform=leg_ax.transAxes)
+        top -= h + gap
     def nice_ticks(nrm, lo, hi, min_gap=0.07):
         """Round values placed where they fall on a (possibly nonlinear) colour scale; ticks closer
         than min_gap of the bar are dropped; both ends are always shown."""

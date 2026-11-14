@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass
 class PortfolioConfig:
-    """Section 5.1 defaults, matched to run 20260729_094721."""
+    """Default parameters of the Section 5.1 experiment."""
     mode: str = 'scaling'
     data: str = 'synthetic'
     wass_order: int = 2

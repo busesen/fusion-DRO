@@ -22,8 +22,10 @@ def solve(*, train_data: Dict[str, object], cfg, eps_radius: Optional[np.ndarray
         eps_radius_arr = np.asarray(eps_radius, dtype=float).reshape(K)
         eps_cost_arr = np.array([transport_budget_from_radius(v, 2) for v in eps_radius_arr], dtype=float)
 
-    epsilon_mix_radius = float(np.dot(t, eps_radius_arr))
-    epsilon_mix_cost = transport_budget_from_radius(epsilon_mix_radius, 2)
+    # Since W2^2 is jointly convex, the W2 ball of radius (sum_k t_k eps_k^2)^(1/2) around
+    # the mixture contains the Minkowski sum of the K balls (Proposition 6 with d = W2^2).
+    epsilon_mix_cost = float(np.dot(t, eps_cost_arr))
+    epsilon_mix_radius = radius_from_transport_budget(epsilon_mix_cost, 2)
     nominal_samples, nominal_weights = mixture_support(cfg, train_data)
     result = solve_single_ball_w2(
         train_data=train_data,

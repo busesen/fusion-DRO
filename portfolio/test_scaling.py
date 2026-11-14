@@ -88,7 +88,7 @@ class ScalingTests(unittest.TestCase):
 
     def test_only_joint_figures_with_parent_timestamp(self):
         from .plotting import plot_scaling as plotting
-        data = pd.DataFrame({'method': ['msdro', 'affine']})
+        data = pd.DataFrame({'method': ['exact', 'affine']})
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(plotting, '_configure_plot_style'), \
                  patch.object(plotting, '_plot_joint_log_time_curves') as time_plot, \

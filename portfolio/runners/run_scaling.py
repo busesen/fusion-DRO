@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import time
 from typing import Dict, List
 import numpy as np
@@ -9,7 +10,7 @@ import pandas as pd
 from ..barycenters import compute_w2_gaussian_barycenter, sample_gaussian_barycenter
 from ..data_gen import generate_populations
 from ..radii import barycenter_radii_discrete
-from ..methods.exact_msdro_w2 import solve as solve_exact_w2
+from ..methods.exact_w2 import solve as solve_exact_w2
 from ..methods.mixture_w2 import solve as solve_mixture_w2
 from ..methods.minkowski_w2 import solve as solve_minkowski_w2
 from ..methods.affine_w2 import solve as solve_affine_w2
@@ -126,7 +127,16 @@ def _scaling_methods(cfg):
     return methods
 
 
-def run_scaling(cfg) -> pd.DataFrame:
+def _save_partial(records, out_path) -> None:
+    if out_path is None:
+        return
+    tmp = f"{out_path}.tmp"
+    pd.DataFrame(records).to_csv(tmp, index=False)
+    os.replace(tmp, out_path)
+
+
+def run_scaling(cfg, out_path=None) -> pd.DataFrame:
+    """Run both sweeps. If out_path is given, the results so far are written there after every solve."""
     if cfg.data != 'synthetic':
         raise ValueError('scaling currently supports only data=synthetic')
     if cfg.wass_order != 2:
@@ -191,6 +201,7 @@ def run_scaling(cfg) -> pd.DataFrame:
                         'objective': np.nan if objective is None else float(objective),
                         'radius_scheme': radius_scheme,
                     })
+                    _save_partial(records, out_path)
 
         # N sweep: for each N, build one K-fixed family; every method uses the
         # per-source radii eps_k = (1+delta) * W2(P_k, P_center).
@@ -239,5 +250,6 @@ def run_scaling(cfg) -> pd.DataFrame:
                         'objective': np.nan if objective is None else float(objective),
                         'radius_scheme': radius_scheme,
                     })
+                    _save_partial(records, out_path)
 
     return pd.DataFrame(records)

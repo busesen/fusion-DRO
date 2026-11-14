@@ -38,7 +38,7 @@ def generate_populations(cfg: PortfolioConfig, seed: int) -> Dict[str, object]:
     samples = np.zeros((cfg.K, cfg.N_per_dist, cfg.d_assets), dtype=float)
     for k in range(cfg.K):
         samples[k] = rng.multivariate_normal(
-            mean=means[k], cov=covariances[k], size=cfg.N_per_dist,
+            mean=means[k], cov=covariances[k], size=cfg.N_per_dist, method='cholesky',
         )
     return {
         'means': means, 'covariances': covariances, 'cov_directions': directions,

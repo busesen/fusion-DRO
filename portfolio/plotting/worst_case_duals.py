@@ -134,13 +134,13 @@ def solve_separable(samples, t, eps_cost, cfg, rule: str):
 
 
 def solve_mixture(samples, t, eps_radius, cfg):
-    """Single ball around the weighted mixture with radius sum_k t_k eps_k (as methods/mixture_w2.py)."""
+    """Single ball around the weighted mixture with radius (sum_k t_k eps_k^2)^(1/2) (as methods/mixture_w2.py)."""
     K, d = len(samples), samples[0].shape[1]
     b, c = branch_factors(cfg.rho, cfg.eta)
     sup = np.vstack(samples)
     p = np.concatenate([np.full(len(X), t[k] / len(X)) for k, X in enumerate(samples)])
     p = p / p.sum()
-    r = float(np.dot(t, eps_radius))
+    r = float(np.sqrt(np.dot(t, np.asarray(eps_radius, dtype=float) ** 2)))
     x, tau, gamma, s = cp.Variable(d), cp.Variable(), cp.Variable(nonneg=True), cp.Variable(len(sup))
     cons = [x >= 0, cp.sum(x) == 1]
     tagged = []

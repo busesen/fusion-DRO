@@ -49,7 +49,7 @@ def main() -> None:
     cfg = build_config(args)
     output = _timestamped_output_root(cfg)
     save_json(cfg.to_dict(), output / 'config.json')
-    df = run_scaling(cfg)
+    df = run_scaling(cfg, out_path=output / 'scaling.csv')
     save_dataframe(df, output / 'scaling.csv')
     if cfg.plot:
         from portfolio.plotting.plot_scaling import plot_scaling

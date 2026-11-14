@@ -65,7 +65,7 @@ def compute_w2_gaussian_barycenter(
 
 def sample_gaussian_barycenter(mean: np.ndarray, covariance: np.ndarray, num_samples: int, seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
-    return rng.multivariate_normal(mean=mean, cov=covariance, size=num_samples)
+    return rng.multivariate_normal(mean=mean, cov=covariance, size=num_samples, method='cholesky')
 
 def discrete_transport_cost(x_src, w_src, x_tgt, w_tgt, solver='MOSEK') -> float:
     """Squared empirical W2 distance."""
