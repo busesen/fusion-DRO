@@ -19,10 +19,8 @@ outputs/
 /coffee-newsvendor/data/
 /portfolio/msci/
 
-# Superseded helper copies are not needed by the self-contained coffee rkhs.py.
-third_party/
-**/multi.py
-**/auxiliary_func.py
+# Local backups
+**/_backup*/
 
 # Credentials and commercial solver licenses
 *.lic

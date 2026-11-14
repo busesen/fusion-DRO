@@ -1,12 +1,14 @@
-"""Coffee RKHS benchmark consolidated from the authors' code, with permission.
+"""RKHS benchmark of Section 5.2, based on the authors' code (used with permission):
 
 Xianyu Li, Huan Xu, Xiaolin Huang and Chao Shang (2026),
 Robust Out-of-Distribution Stochastic Optimization, arXiv:2604.20147.
 https://arxiv.org/abs/2604.20147
 
-The coffee routines and adapter retain their existing mathematical formulation,
-randomization, solver settings, stopping rules, and returned-status convention.
-Only file organization and imports are changed; no external helper files are needed.
+The newsvendor loss is represented by all 2^m affine pieces (coffee_data.branch_matrices), and the
+reason why the cutting-plane loop stops is recorded so that only converged solves count as
+optimal. The ball of the reference embeddings is computed from the dual problem (2.9) of Li et
+al., max_alpha -alpha^T K alpha + alpha^T diag(K). The Latin hypercube points are drawn from a
+seeded generator, and Gurobi runs with a fixed number of threads, so that runs are reproducible.
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 import numpy as np
 
 DEFAULT_GUROBI_LICENSE = Path.home() / "gurobi.lic"
-ALT_GUROBI_LICENSE_ENV = "IWB_GUROBI_LICENSE_FILE"
 
 
 
@@ -37,6 +38,9 @@ def _seeded_lhs(dim):
         return qmc.LatinHypercube(dim, seed=s)
 
 LAST_RKHS_CERTIFICATE: Dict[str, Any] = {}
+
+# Gurobi parameters applied to every model, e.g. {"Threads": 1} for a deterministic solution path.
+GUROBI_PARAMS: Dict[str, Any] = {}
 
 # termination reason, iterations and objective of the last M_SMC_Model newsvendor solve
 LAST_RKHS_RUN_INFO = {}
@@ -54,19 +58,15 @@ def check_rkhs_dependencies() -> None:
     except ImportError as exc:
         raise ImportError(
             "RKHS requires gurobipy and scikit-learn from requirements.txt. "
-            "Install them or disable this benchmark with --run_rkhs False."
+            "Install them or run the experiment without --methods rkhs."
         ) from exc
 
 
 def _ensure_gurobi_license(gurobi_license_file: str='') -> None:
     if str(gurobi_license_file).strip():
         os.environ['GRB_LICENSE_FILE'] = str(Path(gurobi_license_file).expanduser())
-    elif not os.environ.get('GRB_LICENSE_FILE'):
-        alternate = os.environ.get(ALT_GUROBI_LICENSE_ENV)
-        if alternate:
-            os.environ['GRB_LICENSE_FILE'] = str(Path(alternate).expanduser())
-        elif DEFAULT_GUROBI_LICENSE.exists():
-            os.environ['GRB_LICENSE_FILE'] = str(DEFAULT_GUROBI_LICENSE)
+    elif not os.environ.get('GRB_LICENSE_FILE') and DEFAULT_GUROBI_LICENSE.exists():
+        os.environ['GRB_LICENSE_FILE'] = str(DEFAULT_GUROBI_LICENSE)
 
 class rkhsFun:
 
@@ -137,6 +137,8 @@ def solvedual(kerMatrix, C, upper_bounds=None):
     e = max(float(np.max(caps)), 1.0) * 1e-05
     m = gp.Model('dual')
     m.setParam('OutputFlag', 0)
+    for key, value in GUROBI_PARAMS.items():
+        m.setParam(key, value)
     alpha = m.addMVar(shape=M, vtype=GRB.CONTINUOUS, lb=np.zeros(M), name='alpha')
     for i in range(M):
         m.addConstr(alpha[i] <= caps[i])
@@ -292,9 +294,8 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
     start_time = time.time()
     if problem_type == 'newsvendor':
         (H, B, C, P, dim) = params
-        # All 2^dim affine pieces of the multi-item newsvendor loss (the
-        # original two rows only covered "all under" / "all over").
-        from coffee_common import branch_matrices
+        # all 2^dim affine pieces of the multi-item newsvendor loss
+        from coffee_data import branch_matrices
         A_X, A_Xi = branch_matrices({'H': H, 'B': B, 'C': C, 'P': P})
         dim_x = dim
         n_k = A_X.shape[0]
@@ -334,6 +335,8 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
         K_disc_rep = rbf_kernel(discretization_points, representation_points, gamma=kernel_gamma)
         model = gp.Model('time_gap_generation')
         model.setParam('TimeLimit', time_limit)
+        for key, value in GUROBI_PARAMS.items():
+            model.setParam(key, value)
         if not verbose:
             model.setParam(GRB.Param.OutputFlag, 0)
         w = model.addMVar(shape=dim_x, vtype=GRB.CONTINUOUS, lb=np.full(dim_x, 0), name='w')
@@ -474,8 +477,8 @@ def M_SMC_Model(problem_type, data_info, params, SMM_params, kernel, K, kernel_p
 
 def rkhs_status(w, obj, run_info) -> str:
     """Status of an RKHS (M-SMC) solve from the termination reason of its cutting-plane loop.
-    'optimal': no violated constraint left; 'optimal_stagnation': stopped by the original
-    code's own convergence rule (objective unchanged for 3 iterations). Anything else (time
+    'optimal': no violated constraint left; 'optimal_stagnation': stopped by the
+    convergence rule of Li et al. (objective unchanged for 3 iterations). Anything else (time
     limit, iteration limit, solver status, Gurobi error) is a failure, never 'optimal'."""
     term = (run_info or {}).get("termination")
     if w is None or obj is None or term is None:
@@ -510,7 +513,7 @@ def solve_rkhs(samples_list: Sequence[np.ndarray], validation_samples: np.ndarra
         else:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 (w, obj, time_info) = M_SMC('newsvendor', params, data_info, hyper, outdir, False, is_m5=False, is_realETF=True, verbose=False)
-        extra = {'roodso_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]}
+        extra = {'rkhs_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]}
         # Store the fitted RKHS certificate in a side file for plotting; it is too
         # large for a CSV/Excel cell.
         if LAST_RKHS_CERTIFICATE:
@@ -527,7 +530,7 @@ def solve_rkhs(samples_list: Sequence[np.ndarray], validation_samples: np.ndarra
         extra['rkhs_iterations'] = run_info.get('iterations')
         return (rkhs_status(w, obj, run_info), None if obj is None else float(obj), None if w is None else np.asarray(w, dtype=float), extra)
     except Exception as exc:
-        return (f'error: {exc}', None, None, {'roodso_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]})
+        return (f'error: {exc}', None, None, {'rkhs_hyper': hyper, 'nu': float(rkhs_nu), 'source_weight_mode': str(rkhs_source_weight_mode), 'source_weights': [float(v) for v in np.asarray(rkhs_source_weights, dtype=float).reshape(-1).tolist()]})
     finally:
         random.setstate(py_state)
         np.random.set_state(np_state)
