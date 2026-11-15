@@ -6,7 +6,7 @@ The RKHS benchmark is the method of Li et al. (2026), cited below. It requires a
 
 ## Data
 
-Use the [Maven Roasters Coffee Shop Sales dataset](https://mavenanalytics.io/data-playground/coffee-shop-sales). Place its transaction workbook at `coffee-newsvendor/data/Coffee_Shop_Sales.xlsx`, or supply `--raw_xlsx /path/to/Coffee_Shop_Sales.xlsx`.
+The experiment uses the [Maven Roasters Coffee Shop Sales dataset](https://mavenanalytics.io/data-playground/coffee-shop-sales), whose transaction workbook is included as `coffee-newsvendor/data/Coffee_Shop_Sales.xlsx`. Another copy can be supplied with `--raw_xlsx /path/to/Coffee_Shop_Sales.xlsx`.
 
 The transactions cover January to June 2023 at three New York City stores. For each coffee product sold in all three cup sizes, the sales of the three stores are summed, and the demand of a week is the average daily number of cups of each size. This gives 27 weekly observations for each of five products:
 

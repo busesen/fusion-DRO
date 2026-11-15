@@ -15,8 +15,7 @@ results/
 outputs/
 *.log
 
-# Local input data (documented in each experiment README)
-/coffee-newsvendor/data/
+# Local input data
 /portfolio/msci/
 
 # Local backups
