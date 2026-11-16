@@ -1,6 +1,6 @@
 # Multi-Item Newsvendor: Section 5.2
 
-This experiment evaluates Affine, Static, Minkowski, Mixture, Barycenter, Pool, ERM and RKHS on coffee demand. A coffee product with only five reliable weeks of sales is combined with the long, partly corrupted sales histories of four other products. Each decision specifies how many small, regular and large cups to stock.
+This experiment evaluates Affine, Static, Static (lifted), Minkowski, Mixture, Barycenter, Pool, ERM and RKHS on coffee demand. A coffee product with only five reliable weeks of sales is combined with the long, partly corrupted sales histories of four other products. Each decision specifies how many small, regular and large cups to stock.
 
 The RKHS benchmark is the method of Li et al. (2026), cited below. It requires a Gurobi license.
 
@@ -35,7 +35,7 @@ The transactions cover January to June 2023 at three New York City stores. For e
 | Barycenter samples | 128 |
 | Repetitions | 10 |
 
-Each product serves in turn as the target. Affine and Static use the radii `epsilon_k = (1 + delta) * W2(P_k, P_bary)`, where `P_bary` is the empirical distribution of 128 samples from the Gelbrich barycenter of the references; Barycenter is centered at the same `P_bary`. Pool, Mixture and Barycenter tune a single radius `epsilon`; Minkowski sets `epsilon_k = epsilon` for every reference. RKHS tunes `nu` and uses uniform reference weights. ERM has no hyperparameter.
+Each product serves in turn as the target. Static (lifted), method `static_sq`, applies the static decision rules to the lifted vector `(xi, xi_1^2, ..., xi_m^2)`, so that they also couple the second moment of each item; it is still a second-order cone program. Affine, Static and Static (lifted) use the radii `epsilon_k = (1 + delta) * W2(P_k, P_bary)`, where `P_bary` is the empirical distribution of 128 samples from the Gelbrich barycenter of the references; Barycenter is centered at the same `P_bary`. Pool, Mixture and Barycenter tune a single radius `epsilon`; Minkowski sets `epsilon_k = epsilon` for every reference. RKHS tunes `nu` and uses uniform reference weights. ERM has no hyperparameter.
 
 The hyperparameter of each method is selected by leave-one-out cross-validation on the five known target weeks. In each fold, four weeks form the target reference distribution and the fifth is used for validation. Only hyperparameters for which the method solves to optimality in every fold are eligible. Validation costs that differ by less than a relative tolerance of `1e-6` count as ties, and the smallest tied hyperparameter is selected. The method is then re-solved with all five known weeks at the selected hyperparameter and evaluated on the 22 test weeks. In every repetition, the known weeks, the corruption, the barycenter samples and the RKHS randomization are redrawn. Every random quantity has its own seed derived from `--seed`, the target, the repetition and the fold, so the results do not depend on the number of workers. MOSEK and Gurobi use one thread per solve.
 

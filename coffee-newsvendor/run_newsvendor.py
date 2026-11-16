@@ -57,7 +57,7 @@ import rkhs
 import solvers
 from coffee_data import RAW_COFFEE_XLSX, cost_parameters, load_weekly_demand, newsvendor_cost_matrix, parse_float_list, parse_list
 
-METHODS = ["erm", "pool", "mixture", "minkowski", "barycenter", "static", "affine", "rkhs"]
+METHODS = ["erm", "pool", "mixture", "minkowski", "barycenter", "static", "static_sq", "affine", "rkhs"]
 CONIC_METHODS = METHODS[:-1]
 BULK_PROBABILITIES = (0.10, 0.20, 0.30, 0.40)
 BULK_FACTOR = 4.0
@@ -147,6 +147,8 @@ def solve_all(refs: List[np.ndarray], t: np.ndarray, cp_: Dict[str, Any], args, 
         eps_k = (1.0 + dl) * rho
         if want("static", dl):
             rec("static", dl, timed(solvers.solve_static, refs, t, eps_k ** 2, cp_, solver))
+        if want("static_sq", dl):
+            rec("static_sq", dl, timed(solvers.solve_static_sq, refs, t, eps_k ** 2, cp_, solver))
         if want("affine", dl):
             rec("affine", dl, timed(solvers.solve_affine, refs, t, eps_k ** 2, cp_, solver))
     for nu in args.nu_grid:
