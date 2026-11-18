@@ -17,7 +17,7 @@ import pandas as pd
 
 from coffee_data import PRODUCT_NAMES
 
-ORDER = ["affine", "static", "minkowski", "mixture", "barycenter", "pool", "erm", "rkhs"]
+ORDER = ["affine", "static", "static_sq", "minkowski", "mixture", "barycenter", "pool", "erm", "rkhs"]
 METRICS = [("test_cost", "Test cost"), ("solve_time", "Time")]
 
 
