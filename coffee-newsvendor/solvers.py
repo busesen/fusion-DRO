@@ -115,8 +115,9 @@ def solve_static(samples_list: Sequence[np.ndarray], t_weights: Sequence[float],
 
 def solve_static_sq(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray,
                     cost_params: Dict[str, np.ndarray], solver: str, verbose: bool = False) -> Result:
-    """Static decision rules applied to the lifted vector (xi, xi_1^2, ..., xi_m^2) of Remark
-    rem:lifted-rules, i.e. corrections a_k^T xi + sum_j alpha_kj xi_j^2 with sum_k a_k = 0 and
+    """Example of a lifted decision rule, not used for the reported experiments (see METHODS in
+    run_newsvendor.py for how to run it). Static decision rules applied to the lifted vector
+    s(xi) = (xi, xi_1^2, ..., xi_m^2) of Remark "Lifted Decision Rules", i.e. corrections a_k^T xi + sum_j alpha_kj xi_j^2 with sum_k a_k = 0 and
     sum_k alpha_k = 0. For a piece with slope v = t_k d_l + a_k, the supremum over xi of
     v^T xi + sum_j alpha_kj xi_j^2 - gamma_k ||xi - xi_hat||^2 separates across j and equals
     -gamma_k ||xi_hat||^2 + sum_j (v_j + 2 gamma_k xi_hat_j)^2 / (4 (gamma_k - alpha_kj)),
