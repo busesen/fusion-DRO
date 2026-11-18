@@ -77,7 +77,7 @@ Add the account, partition and environment settings of the cluster to `cluster/j
 
 ## Results
 
-Each call writes `results/n<N>/<method>_sims<a>-<b>.csv` with the test cross-entropy of every simulation, and, for Oracle, the selected update. Table 3 (mean and standard error of `100 (CE / CE_Oracle - 1)` over the simulations) is built with
+Each call writes `results/n<N>/<method>_sims<a>-<b>.csv` with the test cross-entropy of every simulation, and, for Oracle, the selected update. For example, the call in [Run](#run) writes `results/n6000/affine_sims0-9.csv` and `results/n6000/static_sims0-9.csv`. Table 3 (mean and standard error of `100 (CE / CE_Oracle - 1)` over the simulations) is built with
 
 ```bash
 python credit-classification/make_table.py --results credit-classification/results
