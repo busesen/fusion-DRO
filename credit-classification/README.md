@@ -40,7 +40,7 @@ No records are dropped or imputed, as the file has no missing values. Preprocess
 | Simulations | 50 |
 | Split per simulation | stratified (label x latest repayment status) random split into a pool of 18,000 and 12,000 test records; the N hidden records are the first N of a random order of the pool, so they are nested in N |
 | Moment release | analytic Gaussian mechanism, (0.5, 1e-6)-differential privacy, radius `sigma * sqrt(chi2_{134}(0.95))` |
-| Histogram release | Laplace mechanism on the proportions, Euclidean projection onto the simplex, (0.5, 0)-differential privacy, radius = 95% quantile of `||eta - mean(eta)||_1 / 2` (Monte Carlo, 4 million draws) |
+| Histogram release | Laplace mechanism on the proportions, Euclidean projection onto the simplex, (0.5, 0)-differential privacy, radius = 95% quantile of the total variation distance between the noisy and the true proportions (Monte Carlo, 4 million draws) |
 | Nonemptiness | certified in every simulation by a distribution on finitely many points of Xi (the first 2,000 pool records combined with both labels) |
 | Network | 59 -> 256 -> 128 -> 64 -> 1, SiLU activations, output logit capped as `8 tanh(g / 8)` |
 | Weights | `t_1 = t_2 = 1/2` |
