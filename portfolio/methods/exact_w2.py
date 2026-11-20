@@ -145,9 +145,9 @@ def solve(*, train_data: Dict[str, object], cfg, eps_cost: Optional[np.ndarray] 
     except cp.error.SolverError:
         if x.value is None:
             limit = getattr(cfg, 'exact_time_limit_sec', None)
-            print(f"[exact-w2] couldn't find a usable solution within the time limit ({limit} s).")
+            print(f"[exact-w2] MOSEK returned no usable solution (time limit: {limit}).")
             return {
-                'status': 'no_usable_solution_within_time_limit',
+                'status': 'no_usable_solution',
                 'objective': None,
                 'weights': None,
                 'tau': None,

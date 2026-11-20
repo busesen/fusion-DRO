@@ -16,11 +16,11 @@ def radius_from_transport_budget(budget: float, wass_order: int = 2) -> float:
     return float(np.sqrt(max(budget, 0.0)))
 
 
-def barycenter_radii_discrete(source_samples, bary_atoms, bary_weights, delta, solver='MOSEK'):
+def barycenter_radii_discrete(source_samples, bary_atoms, bary_weights, delta, solver='MOSEK', threads=None):
     base_cost = np.array([
         discrete_transport_cost(
             samples, np.ones(len(samples)) / len(samples),
-            bary_atoms, bary_weights, solver=solver,
+            bary_atoms, bary_weights, solver=solver, threads=threads,
         )
         for samples in source_samples
     ], dtype=float)

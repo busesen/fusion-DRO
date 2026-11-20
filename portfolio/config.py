@@ -46,7 +46,8 @@ class PortfolioConfig:
     barycenter_num_samples: int = 10
     solver: str = 'MOSEK'
     mosek_license_path: str | None = None
-    exact_time_limit_sec: float = 1800.0
+    exact_time_limit_sec: float | None = None
+    solver_threads: int = 4
     max_exact_constraints: int | None = 35_000
     verbose: bool = False
 
@@ -62,6 +63,10 @@ def _parse_optional_int(raw: str) -> int | None:
     return None if raw.strip().lower() in {'none', 'off'} else int(raw)
 
 
+def _parse_optional_float(raw: str) -> float | None:
+    return None if str(raw).strip().lower() in {'none', 'off'} else float(raw)
+
+
 def build_config(args: argparse.Namespace) -> PortfolioConfig:
     values = vars(args).copy()
     values['mode'] = 'scaling'
@@ -69,6 +74,7 @@ def build_config(args: argparse.Namespace) -> PortfolioConfig:
         values[key] = _parse_csv_ints(values[key])
     for key in ('max_tuples', 'max_exact_constraints'):
         values[key] = _parse_optional_int(values[key])
+    values['exact_time_limit_sec'] = _parse_optional_float(values['exact_time_limit_sec'])
     cfg = PortfolioConfig(**values)
     validate_config(cfg)
     return cfg
@@ -98,6 +104,8 @@ def validate_config(cfg: PortfolioConfig) -> None:
             raise ValueError(f'{key} must be finite and nonnegative.')
     if not 0 < cfg.eta < 1:
         raise ValueError('eta must lie strictly between zero and one.')
+    if cfg.solver_threads < 0:
+        raise ValueError('solver_threads must be nonnegative (0 = MOSEK default).')
     for cap in (cfg.max_tuples, cfg.max_exact_constraints):
         if cap is not None and cap < 1:
             raise ValueError('Exact-solver caps must be positive or None.')

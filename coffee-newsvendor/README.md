@@ -62,6 +62,7 @@ Each instance (target and repetition) writes to `instances/<target>_split<r>/`:
 - `data.npz`: the known and test weeks of the target, the corrupted histories and the weights.
 - `cv_grid_<job>.csv`: validation cost, status and solve time of every method, hyperparameter and fold.
 - `selected_<job>.csv`: the selected hyperparameter, the test cost and the time of the final solve of every method.
+- `rkhs/solves/`: every finished RKHS solve. A restarted job reuses these and continues with the remaining solves.
 
 The table of Section 5.2 is built with
 

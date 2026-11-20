@@ -53,7 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
     scaling.add_argument('--max-exact-constraints', default='35000',
                          help='Skip the exact solve above this number of constraints (or none); larger '
                               'instances ran out of memory in our runs.')
-    scaling.add_argument('--exact-time-limit-sec', type=float, default=1800.0)
+    scaling.add_argument('--exact-time-limit-sec', default='none',
+                         help='MOSEK time limit for the exact solve in seconds (or none).')
+    scaling.add_argument('--solver-threads', type=int, default=4,
+                         help='MOSEK threads per solve (0 = MOSEK default).')
     scaling.add_argument('--solver', default='MOSEK')
     scaling.add_argument('--mosek-license-path', default=None)
     scaling.add_argument('--verbose', action=argparse.BooleanOptionalAction, default=False)

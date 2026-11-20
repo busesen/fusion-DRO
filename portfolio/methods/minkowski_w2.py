@@ -4,7 +4,7 @@ from typing import Dict, Optional
 import numpy as np
 import cvxpy as cp
 
-from .shared import branch_factors, source_rule_weights, source_sample_list, uniform_probs
+from .shared import branch_factors, source_rule_weights, source_sample_list, uniform_probs, solve_kwargs
 from .exact_single_ball_w2 import solve as solve_single_ball_w2
 
 
@@ -45,7 +45,7 @@ def solve(*, train_data: Dict[str, object], cfg, eps_cost: Optional[np.ndarray] 
     sample_term = cp.sum([cp.sum(s[k]) / float(Ns[k]) for k in range(K)])
     obj = cp.Minimize(cp.sum(cp.multiply(gamma, eps_cost)) + sample_term)
     prob = cp.Problem(obj, constraints)
-    prob.solve(solver=cfg.solver, verbose=cfg.verbose)
+    prob.solve(**solve_kwargs(cfg))
 
     return {
         'status': prob.status,

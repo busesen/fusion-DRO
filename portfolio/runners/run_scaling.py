@@ -88,6 +88,7 @@ def _build_per_source_radii_from_fixed_center(train_data, cfg, delta, center_sam
         bary_weights=np.asarray(center_weights, dtype=float),
         delta=delta,
         solver=cfg.solver,
+        threads=cfg.solver_threads,
     )
     return {
         'eps_cost': radii['eps_cost'],

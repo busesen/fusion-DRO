@@ -67,7 +67,7 @@ def sample_gaussian_barycenter(mean: np.ndarray, covariance: np.ndarray, num_sam
     rng = np.random.default_rng(seed)
     return rng.multivariate_normal(mean=mean, cov=covariance, size=num_samples, method='cholesky')
 
-def discrete_transport_cost(x_src, w_src, x_tgt, w_tgt, solver='MOSEK') -> float:
+def discrete_transport_cost(x_src, w_src, x_tgt, w_tgt, solver='MOSEK', threads=None) -> float:
     """Squared empirical W2 distance."""
     diff = x_src[:, None, :] - x_tgt[None, :, :]
     cost = np.sum(diff * diff, axis=2)
@@ -76,7 +76,8 @@ def discrete_transport_cost(x_src, w_src, x_tgt, w_tgt, solver='MOSEK') -> float
         cp.Minimize(cp.sum(cp.multiply(cost, transport))),
         [cp.sum(transport, axis=1) == w_src, cp.sum(transport, axis=0) == w_tgt],
     )
-    problem.solve(solver=solver, verbose=False)
+    extra = {'mosek_params': {'MSK_IPAR_NUM_THREADS': int(threads)}} if threads and str(solver).upper() == 'MOSEK' else {}
+    problem.solve(solver=solver, verbose=False, **extra)
     if problem.status not in {cp.OPTIMAL, cp.OPTIMAL_INACCURATE} or problem.value is None:
         raise RuntimeError(f'Radius-calibration transport problem failed: {problem.status}')
     return float(problem.value)

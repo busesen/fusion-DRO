@@ -57,6 +57,11 @@ METHOD_STYLE = {
 }
 CI_Z = 1.96
 
+
+def _method_label(method: str) -> str:
+    """Method name in small capitals, as in the paper (plain text without LaTeX)."""
+    return rf"\textsc{{{method}}}" if plt.rcParams["text.usetex"] else str(method)
+
 # Joint log-time figure (`time_vs_log_joint.pdf`) styling.
 JOINT_LOG_FIGSIZE = (14, 6)
 JOINT_LOG_AXIS_LABELSIZE = 22      # x/y axis-label size for the two joint log panels
@@ -148,7 +153,7 @@ def _prepare_grouped_curve_data(
         clean = clean[clean['sweep_axis'] == sweep_axis]
     if y_col == 'solve_time_sec' and 'status' in clean.columns:
         status_str = clean['status'].fillna('').astype(str)
-        bad = status_str.str.startswith('skipped_') | status_str.eq('no_usable_solution_within_time_limit')
+        bad = status_str.str.startswith('skipped_') | status_str.str.startswith('no_usable_solution')
         clean.loc[bad, y_col] = float('nan')
     clean = clean.dropna(subset=[x_col, y_col])
     if clean.empty:
@@ -255,10 +260,10 @@ def _plot_grouped_lines(
         mean_vals = subdf['mean'].to_numpy(dtype=float)
         low_vals = subdf['ci_low'].to_numpy(dtype=float)
         high_vals = subdf['ci_high'].to_numpy(dtype=float)
-        line, = ax.plot(x_vals, mean_vals, label=method, markersize=markersize_main, **style_main)
+        line, = ax.plot(x_vals, mean_vals, label=_method_label(method), markersize=markersize_main, **style_main)
         ax.fill_between(x_vals, low_vals, high_vals, alpha=0.18, color=style_main.get('color'))
         handles.append(line)
-        labels.append(str(method))
+        labels.append(_method_label(method))
     return handles, labels
 
 

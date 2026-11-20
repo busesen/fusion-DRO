@@ -64,6 +64,7 @@ BULK_FACTOR = 4.0
 DELTA_GRID = "[0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]"
 NU_GRID = "[" + ", ".join(f"{v:.2f}" for v in np.arange(1, 20) * 0.05) + "]"
 PURPOSE = {"split": 1, "corrupt": 2, "bary": 4, "rkhs": 5, "perm": 6}
+LICENSE_ERRORS = ("license", "licence", "authorization", "token.gurobi.com")
 STREAM_KEY = (4, 2000)    # fixed integers that, with --seed, identify the random streams of this experiment
 
 
@@ -151,6 +152,14 @@ def solve_all(refs: List[np.ndarray], t: np.ndarray, cp_: Dict[str, Any], args, 
             rec("affine", dl, timed(solvers.solve_affine, refs, t, eps_k ** 2, cp_, solver))
     for nu in args.nu_grid:
         if want("rkhs", nu):
+            # every RKHS solve is stored as soon as it finishes, so that a restarted job
+            # continues where it stopped instead of repeating the solves of an instance
+            done = Path(seeds["rkhs_outdir"]) / "solves" / f"seed{seeds['rkhs']}_nu{float(nu):.4f}.json"
+            if done.exists():
+                saved = json.loads(done.read_text())
+                clock["t"], clock["solver"] = saved["solve_time"], "GUROBI"
+                rec("rkhs", nu, (saved["status"], saved["objective"], saved["w"], saved["aux"]))
+                continue
             t0 = time.perf_counter()
             res = rkhs.solve_rkhs(refs, refs[-1], cp_, seeds["rkhs_outdir"], verbose=False, seed=seeds["rkhs"],
                                   rkhs_nu=float(nu), rkhs_source_weights=np.ones(len(refs)) / len(refs),
@@ -158,7 +167,19 @@ def solve_all(refs: List[np.ndarray], t: np.ndarray, cp_: Dict[str, Any], args, 
                                   rkhs_T=args.rkhs_T, rkhs_time_limit=args.rkhs_time_limit,
                                   gurobi_license_file=args.gurobi_license_file)
             clock["t"], clock["solver"] = time.perf_counter() - t0, "GUROBI"
-            rec("rkhs", nu, res)
+            if any(key in str(res[0]).lower() for key in LICENSE_ERRORS):
+                # a license or connection problem is not a result; abort the instance so that
+                # it is not marked as done and is solved again when the job is resubmitted
+                raise RuntimeError(f"Gurobi license error: {res[0]}")
+            st, obj, w, aux = res
+            aux = {k: aux.get(k) for k in ("rkhs_termination", "rkhs_iterations")} if aux else {}
+            done.parent.mkdir(parents=True, exist_ok=True)
+            tmp = done.with_suffix(".tmp")
+            tmp.write_text(json.dumps(dict(status=str(st), objective=None if obj is None else float(obj),
+                                           w=None if w is None else np.asarray(w, float).tolist(),
+                                           aux=aux, solve_time=clock["t"])))
+            os.replace(tmp, done)
+            rec("rkhs", nu, (st, obj, w, aux))
     for r in out:
         r["rho"] = rho.tolist()
     return out
@@ -336,7 +357,7 @@ def main() -> None:
     if a.summarize_only:
         print(summarize(root).to_string())
         return
-    with open(root / f"config_{tag}_{datetime.now():%Y%m%d_%H%M%S}.json", "w") as f:
+    with open(root / f"config_{tag}_{datetime.now():%Y%m%d_%H%M%S}_{os.getpid()}.json", "w") as f:
         json.dump(dict(vars(a), resolved=args, environment=environment_info()), f, indent=2)
 
     W, prices = load_weekly_demand(a.raw_xlsx)

@@ -47,14 +47,24 @@ def mixture_support(cfg, train_data: Dict[str, object]) -> tuple[np.ndarray, np.
     return samples, probs
 
 
+def mosek_params(threads: int | None) -> Dict[str, Any]:
+    """MOSEK parameters shared by all solves (a fixed thread count, 0 = MOSEK default)."""
+    return {'MSK_IPAR_NUM_THREADS': int(threads)} if threads else {}
+
+
+def solve_kwargs(cfg) -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {'solver': cfg.solver, 'verbose': cfg.verbose}
+    if str(cfg.solver).upper() == 'MOSEK':
+        kwargs['mosek_params'] = mosek_params(getattr(cfg, 'solver_threads', None))
+    return kwargs
+
+
 def exact_solve_kwargs(cfg) -> Dict[str, Any]:
-    kwargs: Dict[str, Any] = {
-        'solver': cfg.solver,
-        'verbose': cfg.verbose,
-    }
-    if str(cfg.solver).upper() == 'MOSEK' and getattr(cfg, 'exact_time_limit_sec', None) is not None:
-        kwargs['mosek_params'] = {
-            'MSK_DPAR_OPTIMIZER_MAX_TIME': float(cfg.exact_time_limit_sec),
-        }
+    kwargs = solve_kwargs(cfg)
+    if str(cfg.solver).upper() == 'MOSEK':
+        # When MOSEK stops without certifying optimality (status UNKNOWN), its last iterate
+        # is reported with status optimal_inaccurate instead of being discarded.
         kwargs['accept_unknown'] = True
+        if getattr(cfg, 'exact_time_limit_sec', None) is not None:
+            kwargs['mosek_params']['MSK_DPAR_OPTIMIZER_MAX_TIME'] = float(cfg.exact_time_limit_sec)
     return kwargs

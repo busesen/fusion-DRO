@@ -4,7 +4,7 @@ from typing import Dict, Optional
 import numpy as np
 import cvxpy as cp
 
-from .shared import branch_factors, pooled_support
+from .shared import branch_factors, pooled_support, solve_kwargs
 
 
 def solve(*, train_data: Dict[str, object], cfg, nominal_samples: Optional[np.ndarray] = None, nominal_weights: Optional[np.ndarray] = None, eps_cost: Optional[float] = None, **kwargs) -> Dict[str, object]:
@@ -35,7 +35,7 @@ def solve(*, train_data: Dict[str, object], cfg, nominal_samples: Optional[np.nd
 
     obj = cp.Minimize(gamma * float(eps_cost) + probs @ s)
     prob = cp.Problem(obj, constraints)
-    prob.solve(solver=cfg.solver, verbose=cfg.verbose)
+    prob.solve(**solve_kwargs(cfg))
 
     return {
         'status': prob.status,

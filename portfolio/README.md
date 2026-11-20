@@ -50,11 +50,11 @@ python portfolio/main.py scaling \
   --fixed-delta 0.01 \
   --run-exact True --run-mixture True --run-minkowski True \
   --approx-mode both \
-  --max-exact-constraints 35000 --exact-time-limit-sec 1800 \
-  --solver MOSEK
+  --max-exact-constraints 35000 --exact-time-limit-sec none \
+  --solver MOSEK --solver-threads 4
 ```
 
-Reference weights are uniform. Repetition r uses empirical-sample seed `seed_base + r` and covariance-direction seed `cov_direction_seed + seed_base + r`, for r = 0, ..., 9. The exact reformulation has 2 + 4 ∏ₖ Nₖ constraints. In our runs, instances above 35,000 constraints, starting with K = 4 and N_k = 10, ran out of memory. The default caps (`--max-exact-constraints 35000`, `--max-tuples 200000`) therefore skip these instances and record them as `skipped_constraints_…` or `skipped_tuples_…` in `scaling.csv`, instead of letting the run fail. They are the missing points of the exact curves in Figures 1–2. Pass `none` to either cap to attempt them on a machine with more memory. All settings in the command above are also defaults.
+Reference weights are uniform. Repetition r uses empirical-sample seed `seed_base + r` and covariance-direction seed `cov_direction_seed + seed_base + r`, for r = 0, ..., 9. The exact reformulation has 2 + 4 ∏ₖ Nₖ constraints. In our runs, instances above 35,000 constraints, starting with K = 4 and N_k = 10, ran out of memory. The default caps (`--max-exact-constraints 35000`, `--max-tuples 200000`) therefore skip these instances and record them as `skipped_constraints_…` or `skipped_tuples_…` in `scaling.csv`, instead of letting the run fail. They are the missing points of the exact curves in Figures 1–2. Pass `none` to either cap to attempt them on a machine with more memory. The exact solves run without a time limit. If MOSEK stops without certifying optimality, its last solution is reported with status `optimal_inaccurate`. Every MOSEK solve uses 4 threads, so the results do not depend on the number of cores of the machine. All settings in the command above are also defaults.
 
 ## Results
 
