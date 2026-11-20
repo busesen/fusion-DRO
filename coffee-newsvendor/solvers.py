@@ -113,6 +113,40 @@ def solve_static(samples_list: Sequence[np.ndarray], t_weights: Sequence[float],
     return _out(prob, w, {"dual_gamma": _val(gamma), "dual_a": _val(a)})
 
 
+def solve_static_sq(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray,
+                    cost_params: Dict[str, np.ndarray], solver: str, verbose: bool = False) -> Result:
+    """Example of a lifted decision rule, not used for the reported experiments (see METHODS in
+    run_newsvendor.py for how to run it). Static decision rules applied to the lifted vector
+    s(xi) = (xi, xi_1^2, ..., xi_m^2) of Remark "Lifted Decision Rules", i.e. corrections a_k^T xi + sum_j alpha_kj xi_j^2 with sum_k a_k = 0 and
+    sum_k alpha_k = 0. For a piece with slope v = t_k d_l + a_k, the supremum over xi of
+    v^T xi + sum_j alpha_kj xi_j^2 - gamma_k ||xi - xi_hat||^2 separates across j and equals
+    -gamma_k ||xi_hat||^2 + sum_j (v_j + 2 gamma_k xi_hat_j)^2 / (4 (gamma_k - alpha_kj)),
+    a second-order cone constraint. With alpha = 0 this is exactly solve_static."""
+    K, Ns, d = len(samples_list), [len(X) for X in samples_list], samples_list[0].shape[1]
+    A_X, A_Xi = branch_matrices(cost_params)
+    w, a, gamma = cp.Variable(d), cp.Variable((K, d)), cp.Variable(K, nonneg=True)
+    alpha = cp.Variable((K, d))
+    s = [cp.Variable(N) for N in Ns]
+    constraints = [w >= 0, cp.sum(a, axis=0) == 0, cp.sum(alpha, axis=0) == 0]
+    for k in range(K):
+        tk = float(t_weights[k])
+        X = np.asarray(samples_list[k], dtype=float)
+        sq_norms = np.sum(X ** 2, axis=1)
+        for ell in range(A_X.shape[0]):
+            dvec = tk * A_Xi[ell] + a[k, :]
+            z = cp.Variable((Ns[k], d))  # z_ij >= (v_j + 2 gamma_k xi_ij)^2 / (4 (gamma_k - alpha_kj))
+            for j in range(d):
+                num = dvec[j] + 2.0 * gamma[k] * X[:, j]
+                den = gamma[k] - alpha[k, j]
+                # num^2 <= 4 den z  <=>  ||(num, z - den)|| <= z + den
+                constraints.append(cp.SOC(z[:, j] + den, cp.vstack([num, z[:, j] - den]), axis=0))
+            constraints.append(s[k] >= tk * (A_X[ell] @ w) - gamma[k] * sq_norms + cp.sum(z, axis=1))
+    sample_term = cp.sum([cp.sum(s[k]) / float(Ns[k]) for k in range(K)])
+    prob = cp.Problem(cp.Minimize(cp.sum(cp.multiply(gamma, eps_cost)) + sample_term), constraints)
+    _solve_prob(prob, solver, verbose)
+    return _out(prob, w, {"dual_gamma": _val(gamma), "dual_a": _val(a), "dual_alpha": _val(alpha)})
+
+
 def solve_affine(samples_list: Sequence[np.ndarray], t_weights: Sequence[float], eps_cost: np.ndarray,
                  cost_params: Dict[str, np.ndarray], solver: str, verbose: bool = False,
                  psd_shift: float = 1e-8) -> Result:

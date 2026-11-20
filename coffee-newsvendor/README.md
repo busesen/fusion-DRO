@@ -72,6 +72,10 @@ python coffee-newsvendor/make_table.py --results coffee-newsvendor/results/newsv
 
 which writes `table.tex` and `table.csv` (means and standard errors) to the result folder. The reported time is the wall-clock time of the final solve at the selected hyperparameter, excluding cross-validation.
 
+## Lifted Decision Rules
+
+The decision rules can also be applied to a lifted vector `s(xi)`, as in the paper's remark on lifted decision rules. `solvers.solve_static_sq` is an example that is not part of the reported results. It applies the static rules to `s(xi) = (xi, xi_1^2, ..., xi_m^2)`, so that the rules also couple the second moment of each item, and it is still a second-order cone program. To run it as method `static_sq`, add `"static_sq"` to `METHODS` in `run_newsvendor.py` and uncomment the two lines marked "lifting example" in `solve_all`. It uses the same radii as Affine and Static. Other liftings can be added in the same way.
+
 ## Checks
 
 From `fusion-DRO`, run `python -m unittest discover -s coffee-newsvendor -p "test_*.py"`. These checks cover the paper defaults, the newsvendor cost, the target split and the corruption; they need neither the data nor a solver license.

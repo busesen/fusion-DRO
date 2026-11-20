@@ -17,6 +17,7 @@ outputs/
 
 # Local input data
 /portfolio/msci/
+/credit-classification/data/
 
 # Local backups
 **/_backup*/
