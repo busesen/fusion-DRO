@@ -22,7 +22,7 @@ class NewsvendorTests(unittest.TestCase):
         a = rn.build_parser().parse_args([])
         self.assertEqual(parse_float_list(a.delta_grid), [0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50])
         self.assertEqual(parse_float_list(a.epsilon_grid), parse_float_list(a.delta_grid))
-        np.testing.assert_allclose(parse_float_list(a.nu_grid), np.arange(1, 20) * 0.05)
+        self.assertEqual(parse_float_list(a.nu_grid), [0.1, 0.3, 0.5, 0.7, 0.9])
         self.assertEqual((a.n_splits, a.n_known, a.target_weight, a.barycenter_num_samples), (10, 5, 0.5, 128))
         np.testing.assert_allclose(self.cp["C"], [0.4, 1.9, 2.0])
         np.testing.assert_allclose(self.cp["H"], 0.05 * self.cp["P"])

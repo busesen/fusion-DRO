@@ -31,7 +31,7 @@ The transactions cover January to June 2023 at three New York City stores. For e
 | Reference distributions | the four corrupted histories and the known target weeks, K = 5 |
 | Reference weights | 1/2 for the target, 1/8 for each other product |
 | Grid of `delta` and `epsilon` | `{0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50}` |
-| Grid of `nu` (RKHS) | `{0.05, 0.10, ..., 0.95}` |
+| Grid of `nu` (RKHS) | `{0.1, 0.3, 0.5, 0.7, 0.9}` |
 | Barycenter samples | 128 |
 | Repetitions | 10 |
 
