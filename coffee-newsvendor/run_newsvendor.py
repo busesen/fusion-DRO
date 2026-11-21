@@ -67,7 +67,7 @@ BULK_FACTOR = 4.0
 DELTA_GRID = "[0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]"
 NU_GRID = "[0.1, 0.3, 0.5, 0.7, 0.9]"
 PURPOSE = {"split": 1, "corrupt": 2, "bary": 4, "rkhs": 5, "perm": 6}
-LICENSE_ERRORS = ("license", "licence", "authorization", "token.gurobi.com")
+LICENSE_ERRORS = ("license", "licence", "authorization", "token.gurobi.com", "session")
 STREAM_KEY = (4, 2000)    # fixed integers that, with --seed, identify the random streams of this experiment
 
 
