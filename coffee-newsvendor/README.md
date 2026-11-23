@@ -32,12 +32,13 @@ The transactions cover January to June 2023 at three New York City stores. For e
 | Reference weights | 1/2 for the target, 1/8 for each other product |
 | Grid of `delta` and `epsilon` | `{0, 0.005, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50}` |
 | Grid of `nu` (RKHS) | `{0.1, 0.3, 0.5, 0.7, 0.9}` |
+| Time limit per RKHS solve | 3600 seconds |
 | Barycenter samples | 128 |
 | Repetitions | 10 |
 
 Each product serves in turn as the target. Affine and Static use the radii `epsilon_k = (1 + delta) * W2(P_k, P_bary)`, where `P_bary` is the empirical distribution of 128 samples from the Gelbrich barycenter of the references; Barycenter is centered at the same `P_bary`. Pool, Mixture and Barycenter tune a single radius `epsilon`; Minkowski sets `epsilon_k = epsilon` for every reference. RKHS tunes `nu` and uses uniform reference weights. ERM has no hyperparameter.
 
-The hyperparameter of each method is selected by leave-one-out cross-validation on the five known target weeks. In each fold, four weeks form the target reference distribution and the fifth is used for validation. Only hyperparameters for which the method solves to optimality in every fold are eligible. Validation costs that differ by less than a relative tolerance of `1e-6` count as ties, and the smallest tied hyperparameter is selected. The method is then re-solved with all five known weeks at the selected hyperparameter and evaluated on the 22 test weeks. In every repetition, the known weeks, the corruption, the barycenter samples and the RKHS randomization are redrawn. Every random quantity has its own seed derived from `--seed`, the target, the repetition and the fold, so the results do not depend on the number of workers. MOSEK and Gurobi use one thread per solve.
+The hyperparameter of each method is selected by leave-one-out cross-validation on the five known target weeks. In each fold, four weeks form the target reference distribution and the fifth is used for validation. Only hyperparameters for which the method solves to optimality in every fold are eligible. An RKHS solve counts as solved when its cutting-plane method finds no violated constraint or meets the stopping rule of Li et al. (2026), and as not solved when it reaches the time limit or the iteration limit. Validation costs that differ by less than a relative tolerance of `1e-6` count as ties, and the smallest tied hyperparameter is selected. The method is then re-solved with all five known weeks at the selected hyperparameter and evaluated on the 22 test weeks. In every repetition, the known weeks, the corruption, the barycenter samples and the RKHS randomization are redrawn. Every random quantity has its own seed derived from `--seed`, the target, the repetition and the fold, so the results do not depend on the number of workers. MOSEK and Gurobi use one thread per solve.
 
 ## Run
 
@@ -70,7 +71,7 @@ The table of Section 5.2 is built with
 python coffee-newsvendor/make_table.py --results coffee-newsvendor/results/newsvendor
 ```
 
-which writes `table.tex` and `table.csv` (means and standard errors) to the result folder. The reported time is the wall-clock time of the final solve at the selected hyperparameter, excluding cross-validation.
+which writes `table.tex` and `table.csv` (means and standard errors) to the result folder. The reported time is the wall-clock time of the final solve at the selected hyperparameter, excluding cross-validation. If a method returns no decision in some repetitions, which happens for RKHS, its test cost is averaged over the repetitions in which it returned one and its time over all its final solves.
 
 ## Intermediate Decision Rules
 
